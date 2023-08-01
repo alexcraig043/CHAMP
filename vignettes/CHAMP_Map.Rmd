@@ -1,0 +1,181 @@
+---
+title: "Community Detection in R: CHAMP and iterative resolution parameter maps"
+author: "Peter J. Mucha, http://mucha.host.dartmouth.edu/"
+date: "May 2023 DNAC Social Networks and Health Workshop"
+output: html_notebook
+---
+
+# What is this notebook?
+
+This notebook goes well beyond our previous community detection notebooks used at other recent Social Networks and Health Workshops, https://sites.duke.edu/dnac/training/. In particular, this notebook builds on the modularity optimization with resolution parameter capabilities in cluster_leiden() --- which became available in igraph 1.2.7 in October 2021 --- to demonstrate new implementations in R for
+
+1. the CHAMP method for post-processing partitions to find domains of optimality (in the resolution parameter) and
+2. the fixed points of the finite-state iterative map built from Newman's (2016) equivalence between optimizing modularity and fitting degree-corrected planted partition stochastic block models.
+
+More details about these methods are available in the corresponding papers:
+
+1. Weir, William H., Scott Emmons, Ryan Gibson, Dane Taylor, and Peter J. Mucha. 2017. “Post-Processing Partitions to Identify Domains of Modularity Optimization.” Algorithms 10 (3): 93. https://doi.org/10.3390/a10030093.
+    + Python implementation: Weir, William. 2017--2018. https://github.com/wweir827/CHAMP.
+2. Gibson, Ryan A., and Peter J. Mucha. 2022. “Finite-State Parameter Space Maps for Pruning Partitions in Modularity-Based Community Detection.” Scientific Reports 12 (1): 15928. https://doi.org/10.1038/s41598-022-20142-6.
+    + Python implementation: Gibson, Ryan. 2020--2023. https://github.com/ragibson/ModularityPruning.
+
+**Importantly, none of this could have happened without my coauthors above and the students at Dartmouth who helped write the scripts used under the hood: Rachel Matthew, Ryan Rebne, and Ava Scharfstein.**
+
+# Setup
+We call on the following libraries to make everything here work.
+```{r}
+# Load in libraries
+library(igraph)
+library(tidyverse)
+library(ggthemes)
+library(ggplot2)
+library(reshape2)
+```
+
+### What version of R-igraph are you running?
+Note in particular that you need to be sure you have igraph at least version 1.2.7.
+```{r}
+igraph_version()
+```
+
+### The CHAMP_Map_scripts directory
+Eventually, the functionality demonstrated today will become part of IDEANet. In the meantime, the preliminary versions of the corresponding functions are available in a separate directory which we source here. Many of these are helper functions that you don't need to know anything about. We will demonstrate the top-level functions that wrap everything into three main tasks.
+```{r}
+# Import relevant functions
+list.files("CHAMP_Map_scripts")
+invisible(sapply(list.files("CHAMP_Map_scripts",full.names = TRUE),source))
+```
+
+### Finding communities in R with cluster_leiden()
+
+In the examples in our lectures and previous notebook versions, we made a repeated point about the then-apparent absence of native-to-R implementation of the Reichardt-Bornholdt “gamma” resolution parameter for modularity. (The very careful reader of the documentation might notice that there was one option available there all along: the cluster_spinglass() function does indeed have a gamma parameter, and even a gamma.minus for handling negative weights in signed networks. I encourage you to try it if it works on your problem. My intuition is that the simulated annealing approach used in this algorithm is often slower and returns lower quality partitions than other available routines, but it is another good function to know about and have available to you for comparison.)
+
+For the purposes of this notebook, we will focus on the cluster_leiden() function, implementing the Leiden method, which aims to clean up some of the problems with the well-known and very widely used Louvain method, as you can read about in the paper. Importantly, none of this notebook would have happened without Vincent's cluster_leiden() implementation.
+
+* Traag, V. A., L. Waltman, and N. J. van Eck. “From Louvain to Leiden: Guaranteeing Well-Connected Communities.” Scientific Reports 9, no. 1 (December 2019). https://doi.org/10.1038/s41598-019-41695-z.
+
+```{r}
+?cluster_leiden
+```
+When consulting the documentation for cluster_leiden(), you will note in particular that the default is to use the constant Potts model (CPM) instead of modularity. I'll admit that I'm biased by my own trajectory in that I'm going to focus on using modularity instead of CPM here. I do not believe one is necessarily "better" than the other. They have different behaviors, especially so in the presence of increased variance in the (possibly weighted) degree distribution. The objective "quality" function in the CPM approach counts the total edge weight within communities relative to what you would expect under constant density, whereas modularity counts the same total edge weight within communities relative to a random graph model with expected degree sequence given by the observed degree sequence of your data. Which behavior you want might reasonably and understandably vary with the problem you want to address. **That said, note that the current implementation of the functions in the CHAMP_Map_scripts assumes you are using modularity, not CPM.** Keep in mind throughout our entire discussion here that at the end of the day these are all just different ways of performing unsupervised clustering on network data; like unsupervised clustering of any other data, there can be multiple good ways to cluster data and there is no single answer that is best in all settings. See for example:
+
+* Peel, Leto, Daniel B. Larremore, and Aaron Clauset. 2017. “The Ground Truth about Metadata and Community Detection in Networks.” Science Advances 3 (5): e1602548. https://doi.org/10.1126/sciadv.1602548.
+
+*Please also pay careful attention to the documentation here about how weights are handled. The default weights argument is NULL here, but "If it is NULL and the input graph has a ‘weight’ edge attribute, then that attribute will be used." If you have a 'weight' edge attribute that you want ignored, you need to stop cluster_leiden() from using it by passing weights=NA. (I'm also not 100% sure from my experience with the function whether this currently only works for CPM and you might have to pass an unweighted graph as the only way to ignore the weights when using modularity --- it seems like the simplest way to be sure weights are ignored is to pass an unweighted graph.)*
+
+# Example: The Zachary Karate Club
+>"If your method doesn't work on this network, then go home."  
+-- Eric Kolaczyk, at the opening workshop of the 2010-11 SAMSI program year on Complex Networks
+
+* Zachary, Wayne W. 1977. “An Information Flow Model for Conflict and Fission in Small Groups.” Journal of Anthropological Research, 452–473.
+* See also https://networkkarate.tumblr.com/
+```{r}
+library(igraphdata)
+data(karate)
+print(karate)
+plot(karate, main="Karate Club Network")
+```
+### Step 1: Collect Partitions
+The whole idea of CHAMP is that it post-processes community structure partitions that you've already taken the time to compute. It is not a community finding algorithm itself; rather, it enforces the modularity (with resolution parameter) objective function back onto the (possibly very many) partitions that you already have. So to use this we first need to have a set of partitions, which we will obtain here with the *get_partitions()* function. Under the hood it runs cluster_leiden() varying gamma, filters out the duplicate partitions, and then does a bunch of processing to format it appropriately for what will come next.
+```{r}
+#get_partitions <- function( network, 
+#                            gamma_range=c(0,2), 
+#                            n_runs=100, 
+#                            n_iterations=2, #parameter for cluster_leiden
+#                            seed=NULL){
+partitions <- get_partitions(karate)
+```
+
+### Step 2: CHAMP
+```{r}
+#CHAMP <- function( network, 
+#                   partitions,
+#                   plottitle=NULL){
+partition_summary <- CHAMP(karate,partitions,plottitle="Weighted Karate Club")
+```
+```{r}
+print(partition_summary)
+```
+
+The above thus focuses our attention down onto just a few different partitions of nodes into communities that we could query further to ask questions of interest about the application at hand.
+
+# Example: Unweighted Karate Club
+
+For unweighted networks, we can go a step further and apply Newman's observed equivalence between modularity maximization and degree-corrected planted partition SBMs and run his proposed iterative map, but restricted to our CHAMP set of partitions to keep things relatively simpler and more stable.
+
+### Steps 1 and 2 again:
+```{r}
+karate_unweighted<-karate
+E(karate_unweighted)$weight<-1
+partitions <- get_partitions(karate_unweighted)
+partition_summary <- CHAMP(karate_unweighted,partitions,plottitle="Unweighted Karate Club")
+print(partition_summary)
+```
+
+### Step 3: The iterative map on the CHAMP set
+Now that some optimal partitions (technically: relative to the input set of partitions found by *cluster_leiden* in *get_partitions*) over a gamma range have been found and formatted into *partition_summary*, we can compute a target "estimated" or "next gamma" for each partition using Newman's (2016) equivalence between modularity maximization and fitting a degree-corrected planted-partition stochastic block model. By restricting ourselves to the CHAMP set found by CHAMP.R, we thus map each partition (and its gamma range of optimality) to a single estimated gamma, which may or may not be in the range of optimality of the same partition.
+```{r}
+#get_CHAMP_Map <- function( network, 
+#                           partitions,
+#                           partition_summary,
+#                           plottitle=NULL){
+partition_summary <- get_CHAMP_Map(karate_unweighted,partitions,partition_summary)
+```
+
+```{r}
+print(partition_summary)
+```
+
+# Example: NCAA College Football Network (Div-IA, 2000)
+Another favorite example for demonstrating the need for a resolution parameter is the network of the (then-so-called) Division IA college football games from the Fall 2000 season. This example was introduced by 
+
+* M. Girvan and M. E. J. Newman, Proc. Natl. Acad. Sci. USA 99, 7821-7826 (2002). 
+* The GML file for this example can be downloaded (along with a bunch of other cool examples) from Mark Newman's "Network data" web page at http://www-personal.umich.edu/~mejn/netdata/.
+
+Load the data:
+```{r}
+football <- read_graph("football.gml",format="gml")
+print(football)
+```
+
+Note that the graph includes vertex attributes for "id", "label", and "value". The "id" appears to only be a re-indexing of the 115 vertices starting from 0. The "label" is the name of the university. The "value" indexes which of the conferences the university is associated with, for example we can pick out the 9 universities that made up the ACC back then:
+```{r}
+V(football)$label[V(football)$value==0]
+```
+
+Now let's run our 3 wrappers:
+```{r}
+E(football)$weight <- 1  #Because I haven't coded it correctly for unweighted networks
+partitions <- get_partitions(football,gamma_range=c(0,6),n_runs=600)
+partition_summary <- CHAMP(football,partitions,plottitle="NCAA Div-IA Football")
+partition_summary <- get_CHAMP_Map(football,partitions,partition_summary)
+print(partition_summary)
+```
+# Example: Political Blogs from 2004
+Data from Lada A. Adamic and Natalie Glance, "The political blogosphere and the 2004 US Election", in Proceedings of the WWW-2005 Workshop on the Weblogging Ecosystem (2005).
+```{r}
+polblogs <- read_graph("polblogs.gml",format="gml")
+print(polblogs)
+```
+We restrict ourselves to the largest connected component and recast it as undirected (because or current limitations in both cluster_leiden and in our wrapper codes)
+```{r}
+polblogs.gc<-as.undirected(decompose(polblogs)[[1]])
+print(polblogs.gc)
+```
+Let's run our functions:
+```{r}
+E(polblogs.gc)$weight <- 1  #Because I haven't coded it correctly for unweighted networks
+partitions <- get_partitions(polblogs.gc,gamma_range=c(0,5),n_runs=1000,seed=43)
+partition_summary <- CHAMP(polblogs.gc,partitions,plottitle="Adamic & Glance 2004 Political Blogs")
+partition_summary <- get_CHAMP_Map(polblogs.gc,partitions,partition_summary)
+print(partition_summary)
+```
+Wait, what's going on here? Probe just a little and it's clear that the "7 community" partition is very close to what you might have expected.
+```{r}
+sizes(partitions$partitions[[10]])
+table(V(polblogs.gc)$value+1,membership(partitions$partitions[[10]]))
+sizes(partitions$partitions[[381]])
+table(membership(partitions$partitions[[10]]),membership(partitions$partitions[[381]]))
+plot(polblogs.gc,vertex.label=NA,vertex.color=V(polblogs.gc)$value+1,vertex.size=3)
+```
+Is this 42-community partition interesting? Maybe it's some small subgroups of interest? I don't really know. I will note that this partition (or something similar) is sometimes a fixed point and sometimes not, depending on the random seed and number of Leiden runs. But it might be worth querying further...
