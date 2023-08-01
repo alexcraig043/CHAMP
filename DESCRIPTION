@@ -1,0 +1,16 @@
+Package: CHAMP
+Type: Package
+Title: CHAMP Map Generation and Analysis
+Version: 0.1.0
+Author: Rachel Matthew, Ryan Rebne, Ava Scharfstein, PJM
+Description: This package contains functions to generate maps of CHAMP data and to analyze the data.
+License: What license it uses
+Imports:
+    ggplot2,
+    RColorBrewer
+Suggests:
+    knitr,
+    rmarkdown
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.3

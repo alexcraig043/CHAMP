@@ -1,9 +1,22 @@
-# Wrapper for other CHAMP_Map_scripts helper functions to identify the Convex
-# Hull of Admissible Modularity Partitions (CHAMP) set of partitions and their
-# corresponding domains of optimality.
-
-# Code written in parts by Rachel Matthew, Ryan Rebne, Ava Scharfstein and PJM.
-
+#' CHAMP function
+#'
+#' This function identifies the Convex Hull of Admissible Modularity Partitions (CHAMP)
+#' set of partitions and their corresponding domains of optimality.
+#'
+#' @param network The network to analyze.
+#' @param partitions The list of partitions to consider.
+#' @param plottitle The title of the plot to generate (optional).
+#'
+#' @return A summary of the CHAMP partitions, including the range of gamma values
+#' for which each partition is part of the CHAMP set and the number of clusters in each partition.
+#'
+#' @export
+#'
+#' @examples
+#' # The function takes a network and partitions as input. An example use could be:
+#' # partition_summary <- CHAMP(network, partitions)
+#' @author Code written in parts by Rachel Matthew, Ryan Rebne, Ava Scharfstein and PJM.
+#'
 CHAMP <- function(network,
                   partitions,
                   plottitle = NULL) {
