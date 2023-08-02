@@ -20,7 +20,6 @@
 #' @examples
 #' # Example usage of the function (assuming required inputs are defined)
 #' get_CHAMP_Map(network, partitions, partition_summary)
-#'
 get_CHAMP_Map <- function(network,
                           partitions,
                           partition_summary,

@@ -1,0 +1,66 @@
+<!DOCTYPE html><html><head><title>R: Find Best Partitions</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.15.3/dist/katex.min.css">
+<script type="text/javascript">
+const macros = { "\\R": "\\textsf{R}", "\\code": "\\texttt"};
+function processMathHTML() {
+    var l = document.getElementsByClassName('reqn');
+    for (let e of l) { katex.render(e.textContent, e, { throwOnError: false, macros }); }
+    return;
+}</script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.15.3/dist/katex.min.js"
+    onload="processMathHTML();"></script>
+<link rel="stylesheet" type="text/css" href="R.css" />
+</head><body><div class="container">
+
+<table style="width: 100%;"><tr><td>best_partitions</td><td style="text-align: right;">R Documentation</td></tr></table>
+
+<h2>Find Best Partitions</h2>
+
+<h3>Description</h3>
+
+<p>This function identifies and returns partitions that have a partition count greater or equal to the specified minimum value.
+</p>
+
+
+<h3>Usage</h3>
+
+<pre><code class='language-R'>best_partitions(counts, partitions, min_value)
+</code></pre>
+
+
+<h3>Arguments</h3>
+
+<table>
+<tr style="vertical-align: top;"><td><code>counts</code></td>
+<td>
+<p>A list of partition counts.</p>
+</td></tr>
+<tr style="vertical-align: top;"><td><code>partitions</code></td>
+<td>
+<p>A list of distinct partitions corresponding to the counts.</p>
+</td></tr>
+<tr style="vertical-align: top;"><td><code>min_value</code></td>
+<td>
+<p>The minimum count value to be considered.</p>
+</td></tr>
+</table>
+
+
+<h3>Value</h3>
+
+<p>A list with two elements: 'count' containing the filtered counts, and 'partitions' containing the corresponding partitions.
+</p>
+
+
+<h3>Examples</h3>
+
+<pre><code class='language-R'>counts_list &lt;- list(c(3, 5), c(4, 2))
+partitions_list &lt;- list(c("A", "B"), c("C", "D"))
+best_partitions(counts_list, partitions_list, min_value = 3)
+</code></pre>
+
+
+</div>
+</body></html>

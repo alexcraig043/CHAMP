@@ -1,0 +1,73 @@
+<!DOCTYPE html><html><head><title>R: CHAMP function</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.15.3/dist/katex.min.css">
+<script type="text/javascript">
+const macros = { "\\R": "\\textsf{R}", "\\code": "\\texttt"};
+function processMathHTML() {
+    var l = document.getElementsByClassName('reqn');
+    for (let e of l) { katex.render(e.textContent, e, { throwOnError: false, macros }); }
+    return;
+}</script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.15.3/dist/katex.min.js"
+    onload="processMathHTML();"></script>
+<link rel="stylesheet" type="text/css" href="R.css" />
+</head><body><div class="container">
+
+<table style="width: 100%;"><tr><td>CHAMP</td><td style="text-align: right;">R Documentation</td></tr></table>
+
+<h2>CHAMP function</h2>
+
+<h3>Description</h3>
+
+<p>This function identifies the Convex Hull of Admissible Modularity Partitions (CHAMP)
+set of partitions and their corresponding domains of optimality.
+</p>
+
+
+<h3>Usage</h3>
+
+<pre><code class='language-R'>CHAMP(network, partitions, plottitle = NULL)
+</code></pre>
+
+
+<h3>Arguments</h3>
+
+<table>
+<tr style="vertical-align: top;"><td><code>network</code></td>
+<td>
+<p>The network to analyze.</p>
+</td></tr>
+<tr style="vertical-align: top;"><td><code>partitions</code></td>
+<td>
+<p>The list of partitions to consider.</p>
+</td></tr>
+<tr style="vertical-align: top;"><td><code>plottitle</code></td>
+<td>
+<p>The title of the plot to generate (optional).</p>
+</td></tr>
+</table>
+
+
+<h3>Value</h3>
+
+<p>A summary of the CHAMP partitions, including the range of gamma values
+for which each partition is part of the CHAMP set and the number of clusters in each partition.
+</p>
+
+
+<h3>Author(s)</h3>
+
+<p>Code written in parts by Rachel Matthew, Ryan Rebne, Ava Scharfstein and PJM.
+</p>
+
+
+<h3>Examples</h3>
+
+<pre><code class='language-R'># The function takes a network and partitions as input. An example use could be:
+# partition_summary &lt;- CHAMP(network, partitions)
+</code></pre>
+
+
+</div>
+</body></html>

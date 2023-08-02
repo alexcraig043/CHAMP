@@ -16,103 +16,64 @@
 #' # The function takes a network and partitions as input. An example use could be:
 #' # partition_summary <- CHAMP(network, partitions)
 #' @author Code written in parts by Rachel Matthew, Ryan Rebne, Ava Scharfstein and PJM.
-#'
 CHAMP <- function(network,
                   partitions,
                   plottitle = NULL) {
-  # In the original CHAMP paper and python implementation, we use QHull to do
-  # the heavy lifting. But since we're only dealing with a 1D parameter space
-  # here (for single-layer networks; multilayer networks will be dealt with
-  # elsewhere), we can instead brute-force the identification of the upper
-  # envelope of the Q(gamma) lines. (See the paper for figures of this.)
+  "In the original CHAMP paper and python implementation, we use QHull to do
+  the heavy lifting. But since we're only dealing with a 1D parameter space
+  here (for single-layer networks; multilayer networks will be dealt with
+  elsewhere), we can instead brute-force the identification of the upper
+  envelope of the Q(gamma) lines. (See the paper for figures of this.)"
 
-  mod_matrix <- data.frame(
-    row.names = 1:length(partitions$partitions),
-    base = 1:length(partitions$partitions),
-    decrement = 1:length(partitions$partitions)
-  )
+  # Creating a matrix to store values, more efficient than data frame
+  mod_matrix <- matrix(0, nrow = length(partitions$partitions), ncol = 3)
 
-  for (k in 1:length(partitions$partitions)) {
-    partition <- partitions$partitions[[k]]
-    # VERY SLOW: ret <- partition_level_champ(network, partition)
-    # mod_matrix[k, "base"] <- ret$a_partition
-    # mod_matrix[k, "decrement"] <- ret$p_partition
-    A <- modularity(network, membership(partitions$partitions[[k]]),
-      resolution = 0, weights = E(network)$weight
-    )
-    Q <- modularity(network, membership(partitions$partitions[[k]]),
-      resolution = 1, weights = E(network)$weight
-    )
-    mod_matrix[k, "base"] <- A
-    mod_matrix[k, "decrement"] <- (A - Q)
-  }
+  # Calculating base and decrement values using vectorized operations
+  mod_matrix[, 1] <- sapply(partitions$partitions, function(p) {
+    modularity(network, membership(p), resolution = 0, weights = E(network)$weight)
+  })
+  mod_matrix[, 2] <- mod_matrix[, 1] - sapply(partitions$partitions, function(p) {
+    modularity(network, membership(p), resolution = 1, weights = E(network)$weight)
+  })
 
-  # print(mod_matrix)
-
-  # To start, gamma is set to 0. The modularity of each partition at this point is calculated.
+  "To start, gamma is set to 0. The modularity of each partition at this point is calculated."
+  # Initial calculations
   gam <- 0
-  mods <- mod_matrix["base"] - gam * mod_matrix["decrement"]
-  # print(paste("The modularities:", mods))
+  mods <- mod_matrix[, 1] - gam * mod_matrix[, 2]
+  mmp <- which.max(mods)
 
-  # The maximum partition at this value of gamma is detected. because gamma=0 here, this is the first max-modularity partition in the range. mmp="maximum modularity partition"
-  mmp <- which(mods == max(mods))[[1]]
+  # Calculating tilmax using vectorized operations
+  mod_matrix[, 3] <- (mod_matrix[mmp, 1] - mod_matrix[, 1]) /
+    (mod_matrix[mmp, 2] - mod_matrix[, 2])
+  mod_matrix[mmp, 3] <- NaN
+  mod_matrix[mod_matrix[, 3] <= gam, 3] <- NaN
 
-  # Now algebra is used to compute when (at what value of gamma) each of the remaining partitions will have a greater modularity than the current max-modularity partition.
-  # In this case, this calculates when each other partition will overtake the first mmp.
-  mod_matrix["tilmax"] <- (mod_matrix[mmp, "base"] - mod_matrix["base"]) /
-    (mod_matrix[mmp, "decrement"] - mod_matrix["decrement"])
-  # The algorithm proceeds from left to right, so no alues less than the current gamma need be visited, nor should the same partition as the current mmp be chosen. To avoid this:
-  mod_matrix[mmp, "tilmax"] <- NaN
-  mod_matrix[which(mod_matrix["tilmax"] <= gam), "tilmax"] <- NaN
+  # Computing new value of gamma
+  gam <- min(mod_matrix[, 3], na.rm = TRUE) + 10^-8
 
-  # print(mod_matrix)
-
-  # If this leaves no more available partitions, then the loop ends here. In this case, partitions are still available, so we continue. The minimum value remaining of the partitions' tilmax is the soonest gamma at which a new partition becomes the mmp, so we shift our gamma value there and record the end of the previous mmp
-  gam <- min(mod_matrix["tilmax"], na.rm = T) + 10^-8
-  # print(paste("partition", mmp, "is best from 0 to", gam))
-  # note the added 10^-8
-  # boost is necessary to ensure we have PASSED the end of the current mmp's range.
-
-  # At this point the loop repeats, adjusting the mmp and repeating the process.
-  mods <- mod_matrix["base"] - gam * mod_matrix["decrement"]
-  # print(paste("The modularities:", mods))
-  mmp <- which(mods == max(mods))[[1]]
-  # print(paste(mmp, "is now the mmp."))
-
-  # It repeats until no further partitions overtake the current mmp at a later gamma or until gamma exceeds a set range (the find_max function takes the gamma range as an argument)
+  # Repeating calculations
+  mods <- mod_matrix[, 1] - gam * mod_matrix[, 2]
+  "The maximum partition at this value of gamma is detected. because gamma=0 here, this is the first max-modularity partition in the range. mmp='maximum modularity partition'"
+  mmp <- which.max(mods)
   fmax <- find_max(mod_matrix, c(partitions$gamma_min, partitions$gamma_max))
 
-
-  # Now for plotting purposes we re-do the whole thing brute-forced at equispaced gamma values
+  # Defining gammas and pre-allocating vectors
   gammas <- seq(
     partitions$gamma_min, partitions$gamma_max,
     (partitions$gamma_max - partitions$gamma_min) / 200
   )
-  a <- list()
-  p <- list()
-  k <- 0
-  # Note this whole loop just recomputes items computed above. Need to remove.
-  for (partition in partitions$partitions) {
-    k <- k + 1
-    # VERY SLOW: ret <- partition_level_champ(network, partition)
-    # a[k] <- ret$a_partition
-    # p[k] <- ret$p_partition
-    A <- modularity(network, membership(partitions$partitions[[k]]),
-      resolution = 0, weights = E(network)$weight
-    )
-    Q <- modularity(network, membership(partitions$partitions[[k]]),
-      resolution = 1, weights = E(network)$weight
-    )
-    a[k] <- A
-    p[k] <- (A - Q)
-  }
+  a <- p <- numeric(length(partitions$partitions))
 
-  modularity <- array(NA, dim = c(length(gammas), length(partitions$partitions)))
-  for (k in 1:length(partitions$partitions)) {
-    for (g in 1:length(gammas)) {
-      modularity[g, k] <- a[[k]] - (gammas[g] * p[[k]])
-    }
-  }
+  # Calculating a and p using sapply
+  a <- sapply(partitions$partitions, function(p) {
+    modularity(network, membership(p), resolution = 0, weights = E(network)$weight)
+  })
+  p <- a - sapply(partitions$partitions, function(p) {
+    modularity(network, membership(p), resolution = 1, weights = E(network)$weight)
+  })
+
+  # Vectorized computation of modularity
+  modularity <- outer(a, gammas, "-") - outer(p, gammas, "*")
 
   best_gammas <- fmax$edges
   best_gammas <- c(best_gammas[-length(best_gammas)], partitions$gamma_max)

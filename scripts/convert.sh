@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory containing .Rd files
-DIR="../R"
+DIR="../man"
 
 # Loop through each .Rd file in the specified directory
 for file in "$DIR"/*.Rd; do
@@ -10,9 +10,10 @@ for file in "$DIR"/*.Rd; do
   
   # Convert to HTML
   R CMD Rdconv -t html -o "$DIR/$base_name.html" "$file"
+  # pandoc -s "$file" -o "$DIR/$base_name.html"
   
   # Convert to PDF (using Rd2pdf command)
-  R CMD Rd2pdf -o "$DIR/$base_name.pdf" "$file"
+  # R CMD Rd2pdf -o "$DIR/$base_name.pdf" "$file"
 done
 
 echo "Conversion complete."
